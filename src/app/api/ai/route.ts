@@ -1,46 +1,21 @@
 import { openrouter } from "@/src/ai/open-router";
-import { generateText, stepCountIs, tool } from "ai";
-import { NextResponse } from "next/server";
+import { tools } from "@/src/ai/tools";
+import { streamText } from "ai";
 import { NextRequest } from "next/server";
-import { z } from "zod";
 
-export async function GET(request: NextRequest) {
-  const result = await generateText({
+export async function POST(request: NextRequest) {
+  const { messages } = await request.json()
+
+  const result = streamText({
     model: openrouter.chat('nvidia/nemotron-3-ultra-550b-a55b:free'),
-    tools: {
-      profileAndUrls: tool({
-        description: 'Essa ferramenta serve para buscar do perfil de um usuário do GitHub ou acessar URLs da API para outras informações de um usuário como lista de organizações, repositórios, eventos, seguidores, seguindo, etc...',
-        inputSchema: z.object({
-          username: z.string().describe('Username do usuário no GitHub'),
-        }),
-        execute: async ({ username }) => {
-          const response = await fetch(`https://api.github.com/users/${username}`)
-          const data = await response.json()
-
-          return JSON.stringify(data)
-        }
-      }),
-
-      fetchHTTP: tool({
-        description: "Essa ferramenta serve para realizar uma requisição HTTP em uma URL especificada e acessar sua resposta",
-        inputSchema: z.object({
-          url: z.string().describe('URL a ser requisitada'),
-        }),
-        execute: async ({ url }) => {
-          const response = await fetch(url)
-          const data = await response.text()
-
-          return data
-        }
-      })
-    },
-    prompt: 'Me dê uma lista de usuários que o usuário BrunoRaposoo segue no GitHub?',
-    stopWhen: stepCountIs(5),
-
-    onStepFinish({ toolResults }) {
-      console.log(toolResults)
-    }
+    tools,
+    messages,
+    maxSteps: 5,
+    toolChoice: 'required',
+    system: `
+      Sempre responda em markdown sem aspas no início ou fim da mensagem.
+    `,
   })
 
-  return NextResponse.json({ message: result.text, parts: result.toolResults })
+  return result.toDataStreamResponse()
 }
